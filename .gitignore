@@ -1,0 +1,41 @@
+﻿# Dependencies
+node_modules/
+package-lock.json
+
+# TypeScript compilation output
+dist/
+build/
+*.js
+*.js.map
+
+# IDE and editor files
+.vscode/
+.idea/
+*.sublime-project
+*.sublime-workspace
+
+# Environment and configuration
+.env
+config.json
+*.log
+
+# Operating System
+.DS_Store
+Thumbs.db
+
+# Project specific
+sounds/
+coverage/
+tmp/
+temp/
+
+# Debug logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Optional npm cache directory
+.npm
+
+# Optional eslint cache
+.eslintcache
