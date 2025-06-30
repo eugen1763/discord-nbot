@@ -19,6 +19,24 @@ export const COMMAND_DEFINITIONS = [
         ]
     },
     {
+        name: 'uploadsound',
+        description: 'Upload a sound file to the bot',
+        options: [
+            {
+                name: 'name',
+                description: 'Name for the sound (used to play it later)',
+                type: 3, // STRING
+                required: true
+            },
+            {
+                name: 'file',
+                description: 'Sound file to upload (mp3, wav, ogg, m4a, flac)',
+                type: 11, // ATTACHMENT
+                required: true
+            }
+        ]
+    },
+    {
         name: "listsounds",
         description: "List all stored sounds"
     },

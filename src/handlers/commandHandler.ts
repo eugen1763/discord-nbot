@@ -5,6 +5,7 @@ import { handleListSoundsCommand } from '../commands/listSoundsCommand';
 import { handleDeleteSoundCommand } from '../commands/deleteSoundCommand';
 import { handleNiggifyCommand } from '../commands/niggifyCommand';
 import { handleSabrifyCommand } from '../commands/sabrifyCommand';
+import { handleUploadSoundCommand } from '../commands/uploadSoundCommand';
 
 export const handleSlashCommand = async (
     interaction: ChatInputCommandInteraction,
@@ -20,6 +21,9 @@ export const handleSlashCommand = async (
             break;
         case 'deletesound':
             await handleDeleteSoundCommand(interaction, soundManager);
+            break;
+        case 'uploadsound':
+            await handleUploadSoundCommand(interaction, soundManager, soundsDir);
             break;
         case 'niggify':
             await handleNiggifyCommand(interaction, soundManager);
