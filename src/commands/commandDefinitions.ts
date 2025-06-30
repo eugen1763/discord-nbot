@@ -1,26 +1,6 @@
 ﻿
 export const COMMAND_DEFINITIONS = [
     {
-        name: "play",
-        description: "Plays a song from youtube",
-        options: [
-            {
-                name: "query",
-                type: 3, // String
-                description: "The song you want to play",
-                required: true
-            }
-        ]
-    },
-    {
-        name: "skip",
-        description: "Skip to the current song"
-    },
-    {
-        name: "stop",
-        description: "Stop the player"
-    },
-    {
         name: "addsound",
         description: "Download and store an MP3 from YouTube",
         options: [
@@ -50,6 +30,24 @@ export const COMMAND_DEFINITIONS = [
                 name: "name",
                 type: 3, // String
                 description: "Name of the sound to delete",
+                required: true
+            }
+        ]
+    },
+    {
+        name: "niggify",
+        description: "Play a sound in a user's voice channel",
+        options: [
+            {
+                name: "user",
+                type: 6, // User
+                description: "The user whose voice channel to join",
+                required: true
+            },
+            {
+                name: "soundname",
+                type: 3, // String
+                description: "The name of the sound to play",
                 required: true
             }
         ]
