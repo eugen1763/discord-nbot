@@ -51,5 +51,23 @@ export const COMMAND_DEFINITIONS = [
                 required: true
             }
         ]
+    },
+    {
+        name: "sabrify",
+        description: "Create a temporary voice channel, move user, and play sound",
+        options: [
+            {
+                name: "user",
+                type: 6, // User
+                description: "The user to move to the temporary channel",
+                required: true
+            },
+            {
+                name: "soundname",
+                type: 3, // String
+                description: "The name of the sound to play",
+                required: true
+            }
+        ]
     }
 ];
