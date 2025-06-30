@@ -1,8 +1,12 @@
-﻿// src/commands/niggifyCommand.ts
-import { 
+﻿import { 
     ChatInputCommandInteraction, 
     GuildMember, 
-    VoiceBasedChannel 
+    VoiceBasedChannel,
+    ActionRowBuilder,
+    ButtonBuilder,
+    ButtonStyle,
+    ComponentType,
+    ButtonInteraction
 } from 'discord.js';
 import { 
     joinVoiceChannel, 
@@ -10,7 +14,9 @@ import {
     createAudioResource, 
     AudioPlayerStatus,
     VoiceConnectionStatus,
-    entersState
+    entersState,
+    VoiceConnection,
+    AudioPlayer
 } from '@discordjs/voice';
 import { SoundManager } from '../soundManager';
 
@@ -62,7 +68,20 @@ export const handleNiggifyCommand = async (
             return;
         }
 
-        await interaction.editReply(`🎵 Joining ${voiceChannel.name} to play "${soundName}"...`);
+        // Create stop button
+        const stopButton = new ButtonBuilder()
+            .setCustomId('stop_sound')
+            .setLabel('Stop Sound')
+            .setStyle(ButtonStyle.Danger)
+            .setEmoji('⏹️');
+
+        const actionRow = new ActionRowBuilder<ButtonBuilder>()
+            .addComponents(stopButton);
+
+        await interaction.editReply({
+            content: `🎵 Joining ${voiceChannel.name} to play "${soundName}"...`,
+            components: [actionRow]
+        });
 
         // Join the voice channel
         const connection = joinVoiceChannel({
@@ -76,7 +95,10 @@ export const handleNiggifyCommand = async (
             await entersState(connection, VoiceConnectionStatus.Ready, 30000);
         } catch (error) {
             connection.destroy();
-            await interaction.editReply('❌ Failed to join the voice channel!');
+            await interaction.editReply({
+                content: '❌ Failed to join the voice channel!',
+                components: []
+            });
             return;
         }
 
@@ -88,6 +110,41 @@ export const handleNiggifyCommand = async (
         player.play(resource);
         connection.subscribe(player);
 
+        let isPlaying = true;
+        let buttonCollector: any = null;
+
+        // Create button collector
+        buttonCollector = interaction.channel?.createMessageComponentCollector({
+            componentType: ComponentType.Button,
+            time: 30000, // 30 seconds timeout
+            filter: (buttonInteraction) => buttonInteraction.customId === 'stop_sound' && buttonInteraction.user.id === interaction.user.id
+        });
+
+        buttonCollector?.on('collect', async (buttonInteraction: ButtonInteraction) => {
+            if (buttonInteraction.customId === 'stop_sound') {
+                isPlaying = false;
+                player.stop();
+                connection.destroy();
+                
+                await buttonInteraction.update({
+                    content: `⏹️ Sound stopped! Bot has left ${voiceChannel.name}.`,
+                    components: []
+                });
+                
+                buttonCollector?.stop();
+            }
+        });
+
+        buttonCollector?.on('end', () => {
+            if (isPlaying) {
+                // Remove buttons when collector expires
+                interaction.editReply({
+                    content: `🎵 Playing "${soundName}" in ${voiceChannel.name}...`,
+                    components: []
+                }).catch(() => {});
+            }
+        });
+
         // Handle player events
         player.on(AudioPlayerStatus.Playing, () => {
             console.log(`Playing sound "${soundName}" in ${voiceChannel.name}`);
@@ -95,13 +152,27 @@ export const handleNiggifyCommand = async (
 
         player.on('error', error => {
             console.error('Audio player error:', error);
+            isPlaying = false;
             connection.destroy();
+            buttonCollector?.stop();
+            interaction.editReply({
+                content: '❌ An error occurred while playing the sound!',
+                components: []
+            }).catch(() => {});
         });
 
         // Leave the channel when the sound finishes playing
         player.on(AudioPlayerStatus.Idle, () => {
-            console.log(`Finished playing "${soundName}". Leaving channel.`);
-            connection.destroy();
+            if (isPlaying) {
+                console.log(`Finished playing "${soundName}". Leaving channel.`);
+                isPlaying = false;
+                connection.destroy();
+                buttonCollector?.stop();
+                interaction.editReply({
+                    content: `✅ Finished playing "${soundName}" in ${voiceChannel.name}.`,
+                    components: []
+                }).catch(() => {});
+            }
         });
 
         // Also handle connection state changes
@@ -112,19 +183,32 @@ export const handleNiggifyCommand = async (
                     entersState(connection, VoiceConnectionStatus.Connecting, 5000),
                 ]);
             } catch (error) {
-                connection.destroy();
+                if (isPlaying) {
+                    isPlaying = false;
+                    connection.destroy();
+                    buttonCollector?.stop();
+                }
             }
         });
 
         // Set a timeout to ensure we don't stay in the channel forever
         setTimeout(() => {
-            if (connection.state.status !== VoiceConnectionStatus.Destroyed) {
+            if (connection.state.status !== VoiceConnectionStatus.Destroyed && isPlaying) {
+                isPlaying = false;
                 connection.destroy();
+                buttonCollector?.stop();
+                interaction.editReply({
+                    content: `⏰ Sound timed out. Bot has left ${voiceChannel.name}.`,
+                    components: []
+                }).catch(() => {});
             }
         }, 30000); // 30 seconds max
 
     } catch (error) {
         console.error('Error in niggify command:', error);
-        await interaction.editReply('❌ An error occurred while trying to play the sound!');
+        await interaction.editReply({
+            content: '❌ An error occurred while trying to play the sound!',
+            components: []
+        });
     }
 };

@@ -1,5 +1,24 @@
-﻿import { ChatInputCommandInteraction, GuildMember, VoiceChannel, ChannelType, PermissionFlagsBits } from 'discord.js';
-import { createAudioPlayer, createAudioResource, joinVoiceChannel, AudioPlayerStatus, VoiceConnectionStatus } from '@discordjs/voice';
+﻿import { 
+    ChatInputCommandInteraction, 
+    GuildMember, 
+    VoiceChannel, 
+    ChannelType, 
+    PermissionFlagsBits,
+    ActionRowBuilder,
+    ButtonBuilder,
+    ButtonStyle,
+    ComponentType,
+    ButtonInteraction
+} from 'discord.js';
+import { 
+    createAudioPlayer, 
+    createAudioResource, 
+    joinVoiceChannel, 
+    AudioPlayerStatus, 
+    VoiceConnectionStatus,
+    VoiceConnection,
+    AudioPlayer
+} from '@discordjs/voice';
 import { SoundManager } from '../soundManager';
 
 export const handleSabrifyCommand = async (
@@ -80,6 +99,10 @@ export const handleSabrifyCommand = async (
     await interaction.deferReply();
 
     let tempChannel: VoiceChannel | null = null;
+    let connection: VoiceConnection | null = null;
+    let player: AudioPlayer | null = null;
+    let isPlaying = true;
+    let buttonCollector: any = null;
 
     try {
         // Create temporary voice channel
@@ -99,7 +122,7 @@ export const handleSabrifyCommand = async (
         await targetMember.voice.setChannel(tempChannel);
 
         // Join the voice channel
-        const connection = joinVoiceChannel({
+        connection = joinVoiceChannel({
             channelId: tempChannel.id,
             guildId: interaction.guild.id,
             adapterCreator: interaction.guild.voiceAdapterCreator,
@@ -111,12 +134,12 @@ export const handleSabrifyCommand = async (
                 reject(new Error('Connection timeout'));
             }, 10000);
 
-            connection.on(VoiceConnectionStatus.Ready, () => {
+            connection!.on(VoiceConnectionStatus.Ready, () => {
                 clearTimeout(timeout);
                 resolve();
             });
 
-            connection.on(VoiceConnectionStatus.Disconnected, () => {
+            connection!.on(VoiceConnectionStatus.Disconnected, () => {
                 clearTimeout(timeout);
                 reject(new Error('Connection failed'));
             });
@@ -129,47 +152,126 @@ export const handleSabrifyCommand = async (
         }
 
         const resource = createAudioResource(soundPath);
-        const player = createAudioPlayer();
+        player = createAudioPlayer();
+
+        // Create stop button
+        const stopButton = new ButtonBuilder()
+            .setCustomId('stop_sabrify')
+            .setLabel('Stop Sabrify')
+            .setStyle(ButtonStyle.Danger)
+            .setEmoji('⏹️');
+
+        const actionRow = new ActionRowBuilder<ButtonBuilder>()
+            .addComponents(stopButton);
 
         // Play the sound
         player.play(resource);
         connection.subscribe(player);
 
         await interaction.editReply({
-            content: `🎵 Playing "${soundName}" for ${targetUser.displayName} in Sabris Keller!`
+            content: `🎵 Playing "${soundName}" for ${targetUser.displayName} in Sabris Keller!`,
+            components: [actionRow]
+        });
+
+        // Create button collector
+        buttonCollector = interaction.channel?.createMessageComponentCollector({
+            componentType: ComponentType.Button,
+            time: 30000, // 30 seconds timeout
+            filter: (buttonInteraction) => buttonInteraction.customId === 'stop_sabrify' && buttonInteraction.user.id === interaction.user.id
+        });
+
+        buttonCollector?.on('collect', async (buttonInteraction: ButtonInteraction) => {
+            if (buttonInteraction.customId === 'stop_sabrify') {
+                isPlaying = false;
+                
+                // Stop the player and destroy connection
+                if (player) {
+                    player.stop();
+                }
+                if (connection) {
+                    connection.destroy();
+                }
+
+                // Move user back and clean up
+                try {
+                    const currentMember = await interaction.guild!.members.fetch(targetUser.id);
+                    if (currentMember.voice.channel?.id === tempChannel?.id) {
+                        await currentMember.voice.setChannel(originalVoiceChannel);
+                    }
+                    if (tempChannel) {
+                        await tempChannel.delete();
+                    }
+                } catch (cleanupError) {
+                    console.error('Error during cleanup:', cleanupError);
+                }
+
+                await buttonInteraction.update({
+                    content: `⏹️ Sabrify stopped! ${targetUser.displayName} has been moved back to their original channel.`,
+                    components: []
+                });
+                
+                buttonCollector?.stop();
+            }
+        });
+
+        buttonCollector?.on('end', () => {
+            if (isPlaying) {
+                // Remove buttons when collector expires
+                interaction.editReply({
+                    content: `🎵 Playing "${soundName}" for ${targetUser.displayName} in Sabris Keller!`,
+                    components: []
+                }).catch(() => {});
+            }
         });
 
         // Wait for the audio to finish
         await new Promise<void>((resolve) => {
-            player.on(AudioPlayerStatus.Idle, () => {
-                resolve();
+            player!.on(AudioPlayerStatus.Idle, () => {
+                if (isPlaying) {
+                    resolve();
+                }
+            });
+
+            player!.on('error', (error) => {
+                console.error('Audio player error:', error);
+                if (isPlaying) {
+                    resolve();
+                }
             });
 
             // Fallback timeout in case the audio doesn't end properly
             setTimeout(() => {
-                resolve();
+                if (isPlaying) {
+                    resolve();
+                }
             }, 30000); // 30 second max
         });
 
-        // Move user back to original channel (if they're still in the temp channel)
-        const currentMember = await interaction.guild.members.fetch(targetUser.id);
-        if (currentMember.voice.channel?.id === tempChannel.id) {
-            await currentMember.voice.setChannel(originalVoiceChannel);
+        if (isPlaying) {
+            // Move user back to original channel (if they're still in the temp channel)
+            const currentMember = await interaction.guild.members.fetch(targetUser.id);
+            if (currentMember.voice.channel?.id === tempChannel.id) {
+                await currentMember.voice.setChannel(originalVoiceChannel);
+            }
+
+            // Disconnect from voice channel
+            connection.destroy();
+
+            // Delete the temporary channel
+            await tempChannel.delete();
+
+            isPlaying = false;
+            buttonCollector?.stop();
+
+            await interaction.followUp({
+                content: `✅ Sabrify complete! ${targetUser.displayName} has been moved back to their original channel.`,
+                flags: "Ephemeral"
+            });
         }
-
-        // Disconnect from voice channel
-        connection.destroy();
-
-        // Delete the temporary channel
-        await tempChannel.delete();
-
-        await interaction.followUp({
-            content: `✅ Sabrify complete! ${targetUser.displayName} has been moved back to their original channel.`,
-            flags: "Ephemeral"
-        });
 
     } catch (error) {
         console.error('Error in sabrify command:', error);
+        isPlaying = false;
 
         // Clean up temporary channel if it was created
         if (tempChannel) {
@@ -185,8 +287,16 @@ export const handleSabrifyCommand = async (
             }
         }
 
+        // Clean up voice connection
+        if (connection) {
+            connection.destroy();
+        }
+
+        buttonCollector?.stop();
+
         await interaction.editReply({
-            content: `❌ An error occurred while executing the sabrify command: ${error instanceof Error ? error.message : 'Unknown error'}`
+            content: `❌ An error occurred while executing the sabrify command: ${error instanceof Error ? error.message : 'Unknown error'}`,
+            components: []
         });
     }
 };
