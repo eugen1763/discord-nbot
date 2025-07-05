@@ -121,6 +121,24 @@ export const handleSabrifyCommand = async (
         // Move the user to the temporary channel
         await targetMember.voice.setChannel(tempChannel);
 
+        // Set up a voice state change listener to move the user back if they leave
+        const voiceStateHandler = (oldState: any, newState: any) => {
+            // Check if this is our target user
+            if (newState.member.id === targetUser.id) {
+                // If user left our temp channel or switched to another channel
+                if (oldState.channelId === tempChannel?.id && 
+                    newState.channelId !== tempChannel?.id && 
+                    isPlaying) {
+                    // Move them back to our temp channel
+                    newState.member.voice.setChannel(tempChannel!.id)
+                        .catch((err: any) => console.error('Failed to move user back:', err));
+                }
+            }
+        };
+
+        // Register the handler
+        interaction.client.on('voiceStateUpdate', voiceStateHandler);
+
         // Join the voice channel
         connection = joinVoiceChannel({
             channelId: tempChannel.id,
@@ -184,6 +202,9 @@ export const handleSabrifyCommand = async (
             if (buttonInteraction.customId === 'stop_sabrify') {
                 isPlaying = false;
                 
+                // Remove voice state listener
+                interaction.client.removeAllListeners('voiceStateUpdate');
+
                 // Stop the player and destroy connection
                 if (player) {
                     player.stop();
@@ -248,6 +269,9 @@ export const handleSabrifyCommand = async (
         });
 
         if (isPlaying) {
+            // Remove voice state listener
+            interaction.client.removeAllListeners('voiceStateUpdate');
+
             // Move user back to original channel (if they're still in the temp channel)
             const currentMember = await interaction.guild.members.fetch(targetUser.id);
             if (currentMember.voice.channel?.id === tempChannel.id) {
@@ -272,6 +296,9 @@ export const handleSabrifyCommand = async (
     } catch (error) {
         console.error('Error in sabrify command:', error);
         isPlaying = false;
+
+        // Remove voice state listener
+        interaction.client.removeAllListeners('voiceStateUpdate');
 
         // Clean up temporary channel if it was created
         if (tempChannel) {
