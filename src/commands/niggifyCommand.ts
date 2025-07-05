@@ -68,6 +68,46 @@ export const handleNiggifyCommand = async (
             return;
         }
 
+        // Set up a voice state change listener to follow the user if they change channels
+        const voiceStateHandler = (oldState: any, newState: any) => {
+            // Check if this is our target user
+            if (newState.member.id === targetUser.id) {
+                // If user switched to another channel (not disconnected)
+                if (oldState.channelId !== newState.channelId && 
+                    newState.channelId !== null && 
+                    isPlaying) {
+                    // Follow the user to their new channel
+                    const newChannel = newState.channel;
+                    if (newChannel) {
+                        console.log(`${targetUser.displayName} moved to ${newChannel.name}. Following...`);
+
+                        // Destroy the old connection
+                        connection.destroy();
+
+                        // Join the new channel
+                        const newConnection = joinVoiceChannel({
+                            channelId: newChannel.id,
+                            guildId: interaction.guild!.id,
+                            adapterCreator: interaction.guild!.voiceAdapterCreator,
+                        });
+
+                        // Update our connection reference
+                        connection = newConnection;
+                        connection.subscribe(player);
+
+                        // Update the reply
+                        interaction.editReply({
+                            content: `🎵 Following ${targetUser.displayName} to ${newChannel.name}...`,
+                            components: [actionRow]
+                        }).catch(() => {});
+                    }
+                }
+            }
+        };
+
+        // Register the handler
+        interaction.client.on('voiceStateUpdate', voiceStateHandler);
+
         // Create stop button
         const stopButton = new ButtonBuilder()
             .setCustomId('stop_sound')
@@ -84,7 +124,7 @@ export const handleNiggifyCommand = async (
         });
 
         // Join the voice channel
-        const connection = joinVoiceChannel({
+        let connection = joinVoiceChannel({
             channelId: voiceChannel.id,
             guildId: interaction.guild.id,
             adapterCreator: interaction.guild.voiceAdapterCreator,
@@ -126,6 +166,9 @@ export const handleNiggifyCommand = async (
                 player.stop();
                 connection.destroy();
                 
+                // Remove voice state listener
+                interaction.client.removeAllListeners('voiceStateUpdate');
+
                 await buttonInteraction.update({
                     content: `⏹️ Sound stopped! Bot has left ${voiceChannel.name}.`,
                     components: []
@@ -155,6 +198,10 @@ export const handleNiggifyCommand = async (
             isPlaying = false;
             connection.destroy();
             buttonCollector?.stop();
+
+            // Remove voice state listener
+            interaction.client.removeAllListeners('voiceStateUpdate');
+
             interaction.editReply({
                 content: '❌ An error occurred while playing the sound!',
                 components: []
@@ -168,6 +215,10 @@ export const handleNiggifyCommand = async (
                 isPlaying = false;
                 connection.destroy();
                 buttonCollector?.stop();
+
+                // Remove voice state listener
+                interaction.client.removeAllListeners('voiceStateUpdate');
+
                 interaction.editReply({
                     content: `✅ Finished playing "${soundName}" in ${voiceChannel.name}.`,
                     components: []
@@ -197,6 +248,10 @@ export const handleNiggifyCommand = async (
                 isPlaying = false;
                 connection.destroy();
                 buttonCollector?.stop();
+
+                // Remove voice state listener
+                interaction.client.removeAllListeners('voiceStateUpdate');
+
                 interaction.editReply({
                     content: `⏰ Sound timed out. Bot has left ${voiceChannel.name}.`,
                     components: []
